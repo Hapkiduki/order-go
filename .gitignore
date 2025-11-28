@@ -7,6 +7,8 @@
 *.dll
 *.so
 *.dylib
+bin/
+build/
 
 # Test binary, built with `go test -c`
 *.test
@@ -18,7 +20,7 @@ coverage.*
 profile.cov
 
 # Dependency directories (remove the comment below to include it)
-# vendor/
+vendor/
 
 # Go workspace file
 go.work
@@ -26,7 +28,46 @@ go.work.sum
 
 # env file
 .env
+.env.local
+.env.*.local
+*.env
 
 # Editor/IDE
-# .idea/
-# .vscode/
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+*.swo
+
+# Configuration files with secrets
+config.local.yaml
+config.production.yaml
+secrets/
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+.tmp/
+
+# Docker
+.docker/
+
+# Kubernetes
+*.kubeconfig
+
+# Tilt
+.tilt/
+tilt_modules/
+
+# Build artifacts
+dist/
+out/
+
+# Test artifacts
+testdata/generated/
+.cache/
