@@ -8,6 +8,7 @@
 //   - VI. Processes: Stateless processes
 //   - VII. Port Binding: Self-contained HTTP server
 //   - IX. Disposability: Graceful shutdown
+//   - XI. Logs: Structured logging to stdout
 //
 // Usage:
 //
@@ -31,7 +32,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
+	"github.com/hapkiduki/order-go/internal/application/port"
 	"github.com/hapkiduki/order-go/internal/infrastructure/config"
+	"github.com/hapkiduki/order-go/pkg/logger"
 )
 
 // version is set at build time via ldflags
@@ -44,11 +47,25 @@ func main() {
 	// Load configuration
 	cfg := config.MustLoad()
 
-	fmt.Println("Starting Order Processing System (Monolith)\n version:", version, "\n environment:", cfg.App.Environment)
+	// Initialize logger
+	log := logger.MustNew(logger.Config{
+		Level:       cfg.Log.Level,
+		Format:      cfg.Log.Format,
+		Development: cfg.App.Environment == "development",
+	})
+	defer log.Sync()
+
+	log.Info("Starting Order Processing System (Monolith)",
+		"version", version,
+		"environment", cfg.App.Environment,
+	)
 
 	// Create context that listens for shutdowns signals
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	// Create a logger adapter that implements port.Logger
+	//logAdapter := &loggerAdapter{log} // TODO: This is the instance to pass to services
 
 	// Create Chi router
 	r := chi.NewRouter()
@@ -96,15 +113,16 @@ func main() {
 
 	// Start server in a goroutine
 	go func() {
-		fmt.Println("HTTP server starting ", "address", addr)
+		log.Info("HTTP server starting", "address", addr)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			fmt.Errorf("HTTP server failed", "error", err)
+			log.Fatal("HTTP server failed", "error", err)
 		}
 	}()
 
 	// Wait for interrupt signal
 	<-ctx.Done()
-	fmt.Println("Shutdown signal received")
+
+	log.Info("Shutdown signal received")
 
 	// Create sutdown context with timeout
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
@@ -112,9 +130,9 @@ func main() {
 
 	// Graceful shutdown
 	if err := server.Shutdown(shutdownCtx); err != nil {
-		fmt.Errorf("Server forced to shutdown", "error", err)
+		log.Error("Server forced to shutdown", "error", err)
 	}
-	fmt.Println("Server shutdown complete")
+	log.Info("Server shutdown complete")
 
 }
 
@@ -161,4 +179,43 @@ func methodNotAllowedHandler(w http.ResponseWriter, r *http.Request) {
 			"message": "The requested method is not allowed for this resource",
 		},
 	})
+}
+
+// ============================================================================
+// Adapters to implement port interfaces
+// ============================================================================
+
+// loggerAdapter adapts the logger.Logger to the port.Logger interface.
+type loggerAdapter struct {
+	*logger.Logger
+}
+
+// Debug implements port.Logger.
+func (l *loggerAdapter) Debug(msg string, keysAndValues ...any) {
+	l.Logger.Debug(msg, keysAndValues...)
+}
+
+// Info implements port.Logger.
+func (l *loggerAdapter) Info(msg string, keysAndValues ...any) {
+	l.Logger.Info(msg, keysAndValues...)
+}
+
+// Warn implements port.Logger.
+func (l *loggerAdapter) Warn(msg string, keysAndValues ...any) {
+	l.Logger.Warn(msg, keysAndValues...)
+}
+
+// Error implements port.Logger.
+func (l *loggerAdapter) Error(msg string, keysAndValues ...any) {
+	l.Logger.Error(msg, keysAndValues...)
+}
+
+// With implements port.Logger.
+func (l *loggerAdapter) With(keysAndValues ...any) port.Logger {
+	return &loggerAdapter{l.Logger.With(keysAndValues...)}
+}
+
+// WithContext implements port.Logger.
+func (l *loggerAdapter) WithContext(ctx context.Context) port.Logger {
+	return &loggerAdapter{l.Logger.WithContext(ctx)}
 }

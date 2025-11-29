@@ -45,7 +45,7 @@ test-all: test test-integration ## Run all tests
 run: ## Run API Gateway (monolith)
 	@go run ./cmd/api-gateway
 
-run air: ## Run API Gateway with air (Hot Reload) - requires infrastructure running
+run-air: ## Run API Gateway with air (Hot Reload) - requires infrastructure running
 	@echo "Starting with Air hot reload..."
 #	@echo "Make sure infrastructure is running: make dev-infra"
 	@air -c .air.toml
