@@ -41,6 +41,7 @@ go.work.sum
 *.swo
 
 # Configuration files with secrets
+config.yaml
 config.local.yaml
 config.production.yaml
 secrets/
