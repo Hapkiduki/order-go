@@ -26,3 +26,9 @@ server:
   max_request_size: 10485760  # 10 MB
   cors_allowed_origins:
     - "*"
+  
+# Logging Settings
+log:
+  level: debug  # debug | info | warn | error
+  format: console  # json | console
+  output: stdout  # stdout | stderr | /path/to/logfile.log

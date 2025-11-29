@@ -28,6 +28,9 @@ type Config struct {
 
 	// Server contains HTTP server configuration
 	Server ServerConfig `mapstructure:"server"`
+
+	// Log contains logging configuration
+	Log LogConfig `mapstructure:"log"`
 }
 
 // AppConfig contains application-level configuration.
@@ -70,6 +73,18 @@ type ServerConfig struct {
 
 	// CORSAllowedOrigins is a list of allowed origins for CORS
 	CORSAllowedOrigins []string `mapstructure:"cors_allowed_origins"`
+}
+
+// LogConfig contains logging configuration.
+type LogConfig struct {
+	// Level is the log level (debug, info, warn, error)
+	Level string `mapstructure:"level"`
+
+	// Format is the log output format (json, console)
+	Format string `mapstructure:"format"`
+
+	// Output is the log output (stdout, stderr, file path)
+	Output string `mapstructure:"output"`
 }
 
 // Load loads the configuration from environment variables and config files.
@@ -137,6 +152,11 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("server.shutdown_timeout", 30*time.Second)
 	v.SetDefault("server.max_request_size", 10<<20)            // 10MB
 	v.SetDefault("server.cors_allowed_origins", []string{"*"}) // Allow all origins by default
+
+	// Log defaults
+	v.SetDefault("log.level", "info")
+	v.SetDefault("log.format", "json")
+	v.SetDefault("log.output", "stdout")
 }
 
 // bindEnvVars binds specific environment variables to configuration keys.
