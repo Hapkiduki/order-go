@@ -481,8 +481,8 @@ func RealIP(next http.Handler) http.Handler {
 			realIP = strings.TrimSpace(xri)
 		}
 
-		// Store in context instead of modifying RemoteAddr
-		if realIP != "" {
+		// Validate and store in context instead of modifying RemoteAddr
+		if realIP != "" && net.ParseIP(realIP) != nil {
 			ctx := context.WithValue(r.Context(), RealIPKey, realIP)
 			r = r.WithContext(ctx)
 		}
