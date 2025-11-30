@@ -17,6 +17,7 @@ import (
 	"runtime/debug"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -217,9 +218,10 @@ type RateLimiterConfig struct {
 }
 
 // limiterEntry stores a rate limiter with its last access time.
+// lastAccess is stored as unix timestamp (int64) for atomic operations.
 type limiterEntry struct {
 	limiter    *rate.Limiter
-	lastAccess time.Time
+	lastAccess int64 // unix timestamp in nanoseconds (atomic)
 }
 
 // DefaultRateLimiterConfig returns the default rate limiter configuration.
@@ -260,9 +262,13 @@ func RateLimiter(config RateLimiterConfig) func(http.Handler) http.Handler {
 	mu := sync.RWMutex{}
 
 	// Context for cleanup goroutine
-	// The cleanup goroutine will run until the process exits
+	// Note: the cleanup goroutine runs for the lifetime of the middleware instance.
+	// This is intentional - the middleware is typically created once at startup and
+	// lives for the process lifetime. The goroutine will stop when the process exits.
+	// If you need to stop cleanup explicitly (e.g., for testing), consider returning
+	// the cancel function or using a context passed from the application.
 	ctx, cancel := context.WithCancel(context.Background())
-	_ = cancel // cancel is available if we need to stop cleanup explicitly
+	_ = cancel // Intentionally not called - cleanup runs for process lifetime
 
 	// Start cleanup goroutine
 	// This goroutine will automatically stop when the process exits
@@ -281,17 +287,19 @@ func RateLimiter(config RateLimiterConfig) func(http.Handler) http.Handler {
 	}()
 
 	getLimiter := func(key string) *rate.Limiter {
-		now := time.Now()
+		now := time.Now().UnixNano()
 
 		mu.RLock()
 		entry, exists := limiters[key]
+		if exists {
+			// Update last access time atomically while holding read lock
+			// This prevents race condition where entry could be deleted between
+			// releasing read lock and acquiring write lock.
+			atomic.StoreInt64(&entry.lastAccess, now)
+		}
 		mu.RUnlock()
 
 		if exists {
-			// Update last access time
-			mu.Lock()
-			entry.lastAccess = now
-			mu.Unlock()
 			return entry.limiter
 		}
 
@@ -300,7 +308,7 @@ func RateLimiter(config RateLimiterConfig) func(http.Handler) http.Handler {
 
 		// Double-check after acquiring write lock
 		if entry, exists = limiters[key]; exists {
-			entry.lastAccess = now
+			atomic.StoreInt64(&entry.lastAccess, now)
 			return entry.limiter
 		}
 
@@ -323,7 +331,11 @@ func RateLimiter(config RateLimiterConfig) func(http.Handler) http.Handler {
 				w.Header().Set("Content-Type", "application/json")
 				w.Header().Set("Retry-After", "1")
 				w.WriteHeader(http.StatusTooManyRequests)
-				w.Write([]byte(`{"success":false,"error":{"code":"RATE_LIMITED","message":"Too many requests, please try again later"}}`))
+				if _, err := w.Write([]byte(`{"success":false,"error":{"code":"RATE_LIMITED","message":"Too many requests, please try again later"}}`)); err != nil {
+					// Log write error if logger is available (could be added as parameter)
+					// For now, we silently ignore as response writer errors are typically
+					// connection issues that can't be recovered
+				}
 				return
 			}
 
@@ -334,14 +346,16 @@ func RateLimiter(config RateLimiterConfig) func(http.Handler) http.Handler {
 
 // cleanupInactiveLimiters removes limiters that haven't been accessed within the TTL period.
 func cleanupInactiveLimiters(mu *sync.RWMutex, limiters map[string]*limiterEntry, ttl time.Duration) {
-	now := time.Now()
-	cutoff := now.Add(-ttl)
+	now := time.Now().UnixNano()
+	cutoff := now - ttl.Nanoseconds()
 
 	mu.Lock()
 	defer mu.Unlock()
 
 	for key, entry := range limiters {
-		if entry.lastAccess.Before(cutoff) {
+		// read lastAccess atomically
+		lastAccess := atomic.LoadInt64(&entry.lastAccess)
+		if lastAccess < cutoff {
 			delete(limiters, key)
 		}
 	}
