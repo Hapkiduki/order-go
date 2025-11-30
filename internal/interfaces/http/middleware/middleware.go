@@ -263,58 +263,76 @@ func RateLimiter(config RateLimiterConfig) func(http.Handler) http.Handler {
 
 	// Context for cleanup goroutine
 	// Note: the cleanup goroutine runs for the lifetime of the middleware instance.
-	// This is intentional - the middleware is typically created once at startup and
-	// lives for the process lifetime. The goroutine will stop when the process exits.
-	// If you need to stop cleanup explicitly (e.g., for testing), consider returning
-	// the cancel function or using a context passed from the application.
-	ctx, cancel := context.WithCancel(context.Background())
-	_ = cancel // Intentionally not called - cleanup runs for process lifetime
+	// Refactored: encapsulate cleanup goroutine in RateLimiter struct for proper cleanup.
+	type RateLimiter struct {
+		mu        sync.RWMutex
+		limiters  map[string]*limiterEntry
+		config    rateLimiterConfig
+		ctx       context.Context
+		cancel    context.CancelFunc
+		once      sync.Once
+	}
 
-	// Start cleanup goroutine
-	// This goroutine will automatically stop when the process exits
-	go func() {
-		ticker := time.NewTicker(config.CleanupInterval)
+	func NewRateLimiter(config rateLimiterConfig) *RateLimiter {
+		ctx, cancel := context.WithCancel(context.Background())
+		rl := &RateLimiter{
+			limiters: make(map[string]*limiterEntry),
+			config:   config,
+			ctx:      ctx,
+			cancel:   cancel,
+		}
+		go rl.cleanupLoop()
+		return rl
+	}
+
+	func (rl *RateLimiter) cleanupLoop() {
+		ticker := time.NewTicker(rl.config.CleanupInterval)
 		defer ticker.Stop()
-
 		for {
 			select {
-			case <-ctx.Done():
+			case <-rl.ctx.Done():
 				return
 			case <-ticker.C:
-				cleanupInactiveLimiters(&mu, limiters, config.InactiveTTL)
+				cleanupInactiveLimiters(&rl.mu, rl.limiters, rl.config.InactiveTTL)
 			}
 		}
-	}()
+	}
 
-	getLimiter := func(key string) *rate.Limiter {
+	func (rl *RateLimiter) Close() {
+		rl.once.Do(func() {
+			rl.cancel()
+		})
+	}
+
+	func (rl *RateLimiter) getLimiter(key string) *rate.Limiter {
 		now := time.Now().UnixNano()
 
-		mu.RLock()
-		entry, exists := limiters[key]
+		rl.mu.RLock()
+		entry, exists := rl.limiters[key]
 		if exists {
 			// Update last access time atomically while holding read lock
 			// This prevents race condition where entry could be deleted between
 			// releasing read lock and acquiring write lock.
 			atomic.StoreInt64(&entry.lastAccess, now)
 		}
-		mu.RUnlock()
+		rl.mu.RUnlock()
 
 		if exists {
 			return entry.limiter
 		}
 
-		mu.Lock()
-		defer mu.Unlock()
+		rl.mu.Lock()
+		defer rl.mu.Unlock()
 
 		// Double-check after acquiring write lock
-		if entry, exists = limiters[key]; exists {
+		if entry, exists = rl.limiters[key]; exists {
 			atomic.StoreInt64(&entry.lastAccess, now)
 			return entry.limiter
 		}
 
 		// Create new limiter
-		limiter := rate.NewLimiter(rate.Limit(config.RequestsPerSecond), config.Burst)
-		limiters[key] = &limiterEntry{
+		limiter := rate.NewLimiter(rate.Limit(rl.config.RequestsPerSecond), rl.config.Burst)
+		rl.limiters[key] = &limiterEntry{
 			limiter:    limiter,
 			lastAccess: now,
 		}
