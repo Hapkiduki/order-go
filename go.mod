@@ -10,6 +10,9 @@ require (
 	github.com/go-chi/cors v1.2.2
 	github.com/go-chi/render v1.0.3
 
+	// UUID generation
+	github.com/google/uuid v1.6.0
+
 	// Configuration management (12-Factor: III. Config)
 	github.com/spf13/viper v1.21.0
 
@@ -18,6 +21,9 @@ require (
 
 	// Logging (12-Factor: XI. Logs)
 	go.uber.org/zap v1.27.1
+
+	// Rate limiting
+	golang.org/x/time v0.14.0
 )
 
 require (
