@@ -418,48 +418,6 @@ func ContentTypeJSON(next http.Handler) http.Handler {
 // timeoutWriter wraps http.ResponseWriter to prevent writes after timeout.
 // This prevents race conditions where the handler goroutine tries to write
 // after the timeout response has already been sent.
-type timeoutWriter struct {
-	http.ResponseWriter
-	mu          sync.Mutex
-	timedOut    bool
-	wroteHeader bool
-}
-
-// WriteHeader implements http.ResponseWriter.
-func (tw *timeoutWriter) WriteHeader(code int) {
-	tw.mu.Lock()
-	defer tw.mu.Unlock()
-
-	if tw.timedOut {
-		return // Ignore writes after timeout
-	}
-
-	tw.wroteHeader = true
-	tw.ResponseWriter.WriteHeader(code)
-}
-
-// Write implements http.ResponseWriter.
-func (tw *timeoutWriter) Write(b []byte) (int, error) {
-	tw.mu.Lock()
-	defer tw.mu.Unlock()
-
-	if tw.timedOut {
-		return 0, http.ErrHandlerTimeout // Prevent writes after timeout
-	}
-
-	if !tw.wroteHeader {
-		tw.wroteHeader = true
-		tw.ResponseWriter.WriteHeader(http.StatusOK)
-	}
-
-	return tw.ResponseWriter.Write(b)
-}
-
-// Header implements http.ResponseWriter.
-func (tw *timeoutWriter) Header() http.Header {
-	return tw.ResponseWriter.Header()
-}
-
 // RealIP extracts the real client IP from X-Forwarded-For or X-Real-IP headers.
 // It handles multiple comma-separated IPs in X-Forwarded-For by taking the first one
 // (which is the original client IP). The real IP is stored in the request context
