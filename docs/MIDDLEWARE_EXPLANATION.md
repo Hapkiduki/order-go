@@ -243,7 +243,7 @@ Access-Control-Max-Age: 300
 **Default configuration**:
 - `RequestsPerSecond`: 10
 - `Burst`: 20
-- `KeyFunc`: Uses client IP (`r.RemoteAddr`)
+- `KeyFunc`: Uses real client IP (from `GetRealIP(r)`, set by RealIP middleware)
 
 **How it works**:
 1. Each client has its own "bucket" of tokens
