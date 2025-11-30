@@ -145,8 +145,8 @@ func (rw *responseWriter) WriteHeader(code int) {
 	if !rw.written {
 		rw.statusCode = code
 		rw.written = true
+		rw.ResponseWriter.WriteHeader(code)
 	}
-	rw.ResponseWriter.WriteHeader(code)
 }
 
 // Write implements http.ResponseWriter.
