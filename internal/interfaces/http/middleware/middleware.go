@@ -181,7 +181,13 @@ func Recoverer(logger port.Logger) func(http.Handler) http.Handler {
 
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusInternalServerError)
-					w.Write([]byte(`{"success":false,"error":{"code":"INTERNAL_ERROR","message":"An unexpected error occurred"}}`))
+					if _, writeErr := w.Write([]byte(`{"success":false,"error":{"code":"INTERNAL_ERROR","message":"An unexpected error occurred"}}`)); writeErr != nil {
+						logger.Error("Failed to write error response",
+							"request_id", requestID,
+							"error", writeErr,
+							"path", r.URL.Path,
+						)
+					}
 				}
 			}()
 
