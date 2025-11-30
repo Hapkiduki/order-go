@@ -31,9 +31,11 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/hapkiduki/order-go/internal/application/port"
 	"github.com/hapkiduki/order-go/internal/infrastructure/config"
+	"github.com/hapkiduki/order-go/internal/interfaces/http/middleware"
 	"github.com/hapkiduki/order-go/pkg/logger"
 )
 
@@ -65,7 +67,7 @@ func main() {
 	defer stop()
 
 	// Create a logger adapter that implements port.Logger
-	//logAdapter := &loggerAdapter{log} // TODO: This is the instance to pass to services
+	logAdapter := &loggerAdapter{log}
 
 	// Create Chi router
 	r := chi.NewRouter()
@@ -75,6 +77,22 @@ func main() {
 	// ============================================================================
 	// Order matters! Middleware is executed in the order added.
 
+	// 1. Real IP extraction (for rate limiting and logging)
+	r.Use(middleware.RealIP)
+
+	// 2. Request ID generation/propagation
+	r.Use(middleware.RequestID)
+
+	// 3. Logging (after Request ID so it's included in logs)
+	r.Use(middleware.Logger(logAdapter))
+
+	// 4. Panic recovery
+	r.Use(middleware.Recoverer(logAdapter))
+
+	// 5. Request timeout
+	r.Use(chimiddleware.Timeout(30 * time.Second))
+
+	// 6. CORS
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   cfg.Server.CORSAllowedOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
@@ -83,6 +101,18 @@ func main() {
 		AllowCredentials: true,
 		MaxAge:           300,
 	}))
+
+	// 7. Rate limiting
+	r.Use(middleware.RateLimiter(middleware.DefaultRateLimiterConfig()))
+
+	// 8. Security headers
+	r.Use(middleware.SecureHeaders)
+
+	// 9. API version header
+	r.Use(middleware.APIVersion(version))
+
+	// 10. Content-Type enforcement
+	r.Use(middleware.ContentTypeJSON)
 
 	// ============================================================================
 	// Routes
