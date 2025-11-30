@@ -22,27 +22,37 @@ Request → [1] RealIP → [2] RequestID → [3] Logger → [4] Recoverer →
 
 **What it does:**
 - Extracts the real client IP when there are proxies/load balancers in front
-- Looks for `X-Forwarded-For` or `X-Real-IP` headers
-- Updates `r.RemoteAddr` with the real IP
+- Handles multiple comma-separated IPs in `X-Forwarded-For` by taking the first one (original client IP)
+- Stores the real IP in request context instead of modifying `RemoteAddr`
+- Falls back to `X-Real-IP` header if `X-Forwarded-For` is not present
 
 **Why first?**
 - Other middlewares (RateLimiter, Logger) need the real client IP
 - If behind a proxy, `r.RemoteAddr` would be the proxy IP, not the client's
 
+**Security Note**: 
+- `X-Forwarded-For` can be spoofed by attackers
+- In production, validate against trusted proxy IPs
+- The first IP in `X-Forwarded-For` is typically the original client IP
+
 **Example**:
 ```go
-// Without proxy: r.RemoteAddr = "192.168.1.100:54321"
-// With proxy and X-Forwarded-For header: "203.0.113.1"
-// → Updates r.RemoteAddr = "203.0.113.1"
+// X-Forwarded-For: "203.0.113.1, 192.168.1.1, 10.0.0.1"
+// → Takes first IP: "203.0.113.1"
+// → Stores in context, doesn't modify RemoteAddr
+
+// Access via GetRealIP(r) helper function
+realIP := middleware.GetRealIP(r)  // "203.0.113.1"
 ```
 
 **Code**:
 ```go
-if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-    r.RemoteAddr = xff
-} else if xri := r.Header.Get("X-Real-IP"); xri != "" {
-    r.RemoteAddr = xri
-}
+// Splits X-Forwarded-For by comma and takes first IP
+ips := strings.Split(xff, ",")
+realIP := strings.TrimSpace(ips[0])
+
+// Stores in context instead of modifying RemoteAddr
+ctx := context.WithValue(r.Context(), RealIPKey, realIP)
 ```
 
 ---
@@ -341,16 +351,19 @@ X-API-Version: 1.0.0
 **Location**: `middleware.ContentTypeJSON`
 
 **What it does:**
-- Validates that write requests (POST, PUT, PATCH) have `Content-Type: application/json`
-- If not present or different, returns 415 Unsupported Media Type
+- Validates that write requests (POST, PUT, PATCH) have a valid JSON content type
+- Accepts `application/json` and variants with charset parameters (e.g., `application/json; charset=utf-8`)
+- Empty Content-Type is allowed (will be set to application/json in response)
+- If Content-Type is present but not valid JSON, returns 415 Unsupported Media Type
 - Always sets `Content-Type: application/json` in responses
 
 **Validation**:
 ```go
 // For POST, PUT, PATCH:
-if contentType != "" && contentType != "application/json" {
-    // → 415 Unsupported Media Type
-}
+// Uses mime.ParseMediaType() to handle charset parameters
+// Accepts: "application/json", "application/json; charset=utf-8", etc.
+// Rejects: "text/plain", "application/xml", etc.
+// Allows: empty Content-Type
 ```
 
 **Example error**:
@@ -366,6 +379,14 @@ if contentType != "" && contentType != "application/json" {
 }
 ```
 Status: `415 Unsupported Media Type`
+
+**Accepted Content-Types**:
+- `application/json` ✅
+- `application/json; charset=utf-8` ✅
+- `application/json; charset=UTF-8` ✅
+- (empty) ✅
+- `text/plain` ❌
+- `application/xml` ❌
 
 **Responses**: Always sets `Content-Type: application/json` in all responses.
 

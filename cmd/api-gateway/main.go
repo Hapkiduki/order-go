@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/hapkiduki/order-go/internal/application/port"
 	"github.com/hapkiduki/order-go/internal/infrastructure/config"
@@ -89,7 +90,7 @@ func main() {
 	r.Use(middleware.Recoverer(logAdapter))
 
 	// 5. Request timeout
-	r.Use(middleware.Timeout(30 * time.Second))
+	r.Use(chimiddleware.Timeout(30 * time.Second))
 
 	// 6. CORS
 	r.Use(cors.Handler(cors.Options{
