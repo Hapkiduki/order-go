@@ -392,7 +392,6 @@ func SecureHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-Frame-Options", "DENY")
 
 		// Enable XSS filter
-		w.Header().Set("X-XSS-Protection", "1; mode=block")
 
 		// Strict Transport Security (if using HTTPS)
 		if r.TLS != nil {
