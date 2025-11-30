@@ -399,7 +399,7 @@ func SecureHeaders(next http.Handler) http.Handler {
 		}
 
 		// Content Security Policy
-		w.Header().Set("Content-Security-Policy", "default-src 'self'")
+		w.Header().Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
 
 		// Referrer Policy
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
