@@ -435,9 +435,6 @@ func ContentTypeJSON(next http.Handler) http.Handler {
 	})
 }
 
-// timeoutWriter wraps http.ResponseWriter to prevent writes after timeout.
-// This prevents race conditions where the handler goroutine tries to write
-// after the timeout response has already been sent.
 // RealIP extracts the real client IP from X-Forwarded-For or X-Real-IP headers.
 // It handles multiple comma-separated IPs in X-Forwarded-For by taking the first one
 // (which is the original client IP). The real IP is stored in the request context
