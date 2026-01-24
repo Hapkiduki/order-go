@@ -3,7 +3,7 @@ package dto
 
 // PaginateResponse represents a paginated list of items.
 // It is generic to support any item type.
-type PaginateResponse[T any] struct {
+type PaginatedResponse[T any] struct {
 	// Items is the list of items in this page.
 	Items []T `json:"items"`
 

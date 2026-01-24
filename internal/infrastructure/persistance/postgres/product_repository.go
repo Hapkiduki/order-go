@@ -15,12 +15,20 @@ func NewProductRepository() *ProductRepository {
 	return &ProductRepository{}
 }
 
+// Create persists a new product to the database.
+//
+// Parameters:
+//   - ctx: Context for cancellation and deadlines.
+//   - product: The product to create.
+//
+// Returns:
+//   - error: ErrDuplicateSKU if SKU already exists.
 func (r *ProductRepository) Create(ctx context.Context, product *entity.Product) error {
 	// Implementation goes here
 	return nil
 }
 
-func (r *ProductRepository) GetByID(ctx context.Context, id string) (*entity.Product, error) {
+func (r *ProductRepository) GetByID(ctx context.Context, id uuid.UUID) (*entity.Product, error) {
 	// Implementation goes here
 	return nil, nil
 }
@@ -35,12 +43,12 @@ func (r *ProductRepository) Update(ctx context.Context, product *entity.Product)
 	return nil
 }
 
-func (r *ProductRepository) Delete(ctx context.Context, id string) error {
+func (r *ProductRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	// Implementation goes here
 	return nil
 }
 
-func (r *ProductRepository) FindAll(ctx context.Context, filter map[string]interface{}) ([]*entity.Product, error) {
+func (r *ProductRepository) FindAll(ctx context.Context, filter repository.ProductFilter) ([]*entity.Product, error) {
 	// Implementation goes here
 	return nil, nil
 }

@@ -34,9 +34,13 @@ import (
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/hapkiduki/order-go/internal/application/port"
+	"github.com/hapkiduki/order-go/internal/application/usecase"
 	"github.com/hapkiduki/order-go/internal/infrastructure/config"
+	"github.com/hapkiduki/order-go/internal/infrastructure/persistance/postgres"
+	"github.com/hapkiduki/order-go/internal/interfaces/http/handler"
 	"github.com/hapkiduki/order-go/internal/interfaces/http/middleware"
 	"github.com/hapkiduki/order-go/pkg/logger"
+	"github.com/hapkiduki/order-go/pkg/validator"
 )
 
 // version is set at build time via ldflags
@@ -66,8 +70,23 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// Initialize repositories
+	productsRepo := postgres.NewProductRepository()
+
+	// Initialize validator
+	v := validator.New()
+
 	// Create a logger adapter that implements port.Logger
 	logAdapter := &loggerAdapter{log}
+
+	// Initialize use cases
+	productUseCase := usecase.NewProductUseCase(
+		productsRepo,
+		logAdapter,
+	)
+
+	// Initialize HTTP handlers
+	productHandler := handler.NewProductHandler(productUseCase, v)
 
 	// Create Chi router
 	r := chi.NewRouter()
@@ -121,6 +140,12 @@ func main() {
 	// Health check endpoints (no auth required)
 	r.Get("/health", healthHandler())
 	//r.Get("/ready", readinessHandler())
+
+	// API v1 routes
+	r.Route("/api/v1", func(r chi.Router) {
+		// Mount handlers
+		r.Mount("/products", productHandler.Routes())
+	})
 
 	// 404 handler
 	r.NotFound(notFoundHandler)
