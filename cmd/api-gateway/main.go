@@ -35,12 +35,14 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/hapkiduki/order-go/internal/application/port"
 	"github.com/hapkiduki/order-go/internal/application/usecase"
+	"github.com/hapkiduki/order-go/internal/infrastructure/cache/redis"
 	"github.com/hapkiduki/order-go/internal/infrastructure/config"
 	"github.com/hapkiduki/order-go/internal/infrastructure/persistance/postgres"
 	"github.com/hapkiduki/order-go/internal/interfaces/http/handler"
 	"github.com/hapkiduki/order-go/internal/interfaces/http/middleware"
 	"github.com/hapkiduki/order-go/pkg/logger"
 	"github.com/hapkiduki/order-go/pkg/validator"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // version is set at build time via ldflags
@@ -70,8 +72,23 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// Initialize infrastructure
+	db, err := initDatabase(ctx, cfg.Database)
+	if err != nil {
+		log.Fatal("Failed to initialize database", "error", err)
+	}
+	defer db.Close()
+
+	cache, err := initCache(cfg.Redis)
+	if err != nil {
+		log.Warn("Failed to initialize cache, continuing without cache", "error", err)
+		cache = nil
+	} else {
+		defer cache.Close()
+	}
+
 	// Initialize repositories
-	productsRepo := postgres.NewProductRepository()
+	productsRepo := postgres.NewProductRepository(db)
 
 	// Initialize validator
 	v := validator.New()
@@ -79,9 +96,16 @@ func main() {
 	// Create a logger adapter that implements port.Logger
 	logAdapter := &loggerAdapter{log}
 
+	// Create a cache adapter that implements port.CacheService
+	var cacheAdapter *cacheServiceAdapter
+	if cache != nil {
+		cacheAdapter = &cacheServiceAdapter{cache}
+	}
+
 	// Initialize use cases
 	productUseCase := usecase.NewProductUseCase(
 		productsRepo,
+		cacheAdapter,
 		logAdapter,
 	)
 
@@ -191,6 +215,43 @@ func main() {
 
 }
 
+// initDatabase initializes the PostgreSQL connection pool.
+func initDatabase(ctx context.Context, cfg config.DatabaseConfig) (*pgxpool.Pool, error) {
+	poolConfig, err := pgxpool.ParseConfig(cfg.DSN())
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse database config: %w", err)
+	}
+
+	poolConfig.MaxConns = int32(cfg.MaxOpenConns)
+	poolConfig.MinConns = int32(cfg.MaxIdleConns)
+	poolConfig.MaxConnLifetime = cfg.ConnMaxLifetime
+	poolConfig.MaxConnIdleTime = cfg.ConnMaxIdleTime
+
+	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create connection pool: %w", err)
+	}
+
+	// Test connection
+	if err := pool.Ping(ctx); err != nil {
+		return nil, fmt.Errorf("failed to ping database: %w", err)
+	}
+
+	return pool, nil
+}
+
+// initCache initializes the Redis cache service.
+func initCache(cfg config.RedisConfig) (*redis.CacheService, error) {
+	return redis.NewCacheService(redis.Config{
+		Host:      cfg.Host,
+		Port:      cfg.Port,
+		Password:  cfg.Password,
+		DB:        cfg.DB,
+		PoolSize:  cfg.PoolSize,
+		KeyPrefix: cfg.KeyPrefix,
+	})
+}
+
 // healthHandler returns the health check handler.
 func healthHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -273,4 +334,9 @@ func (l *loggerAdapter) With(keysAndValues ...any) port.Logger {
 // WithContext implements port.Logger.
 func (l *loggerAdapter) WithContext(ctx context.Context) port.Logger {
 	return &loggerAdapter{l.Logger.WithContext(ctx)}
+}
+
+// cacheServiceAdapter adapts redis.CacheService to port.CacheService.
+type cacheServiceAdapter struct {
+	*redis.CacheService
 }

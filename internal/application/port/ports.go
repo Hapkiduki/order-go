@@ -2,13 +2,13 @@
 // Ports define the interfaces that the application layer requires from external
 // services like messaging, caching, logging, etc.
 //
-// In Hexagonal Architecture (ports & adapters):
-//   - Ports are interfaces that define what the application needs.
-//   - Adapters are implementations of these interfaces
-//   - this enables loose coupling and easy testing/swapping of implementations.
+// In Hexagonal Architecture (Ports & Adapters):
+//   - Ports are interfaces that define what the application needs
+//   - Adapters are implementations of those interfaces
+//   - This enables loose coupling and easy testing/swapping of implementations
 //
-// SOLID Principles applied:
-//   - Interface Segregation: small, focused interfaces
+// SOLID Principles Applied:
+//   - Interface Segregation: Small, focused interfaces
 //   - Dependency Inversion: Application depends on abstractions
 package port
 
@@ -17,8 +17,86 @@ import (
 	"time"
 )
 
+// CacheService defines the interface for caching operations.
+// Implementations may use Redis, Memcached, or in-memory caching.
+//
+// Example usage:
+//
+//	cache := redis.NewCacheService(client)
+//	err := cache.Set(ctx, "order:123", orderData, 300)
+//	err := cache.Get(ctx, "order:123", &order)
+type CacheService interface {
+	// Get retrieves a value from the cache.
+	// The value is unmarshaled into the provided destination.
+	//
+	// Parameters:
+	//   - ctx: Context for cancellation and deadlines
+	//   - key: The cache key
+	//   - dest: Pointer to the destination for unmarshaling
+	//
+	// Returns:
+	//   - error: ErrCacheMiss if key not found, or other error
+	Get(ctx context.Context, key string, dest interface{}) error
+
+	// Set stores a value in the cache with the specified TTL.
+	//
+	// Parameters:
+	//   - ctx: Context for cancellation and deadlines
+	//   - key: The cache key
+	//   - value: The value to cache (will be marshaled)
+	//   - ttlSeconds: Time-to-live in seconds (0 for no expiry)
+	//
+	// Returns:
+	//   - error: Any error that occurred during storage
+	Set(ctx context.Context, key string, value interface{}, ttlSeconds int) error
+
+	// Delete removes a value from the cache.
+	//
+	// Parameters:
+	//   - ctx: Context for cancellation and deadlines
+	//   - key: The cache key
+	//
+	// Returns:
+	//   - error: Any error that occurred during deletion
+	Delete(ctx context.Context, key string) error
+
+	// DeletePattern removes all keys matching the pattern.
+	//
+	// Parameters:
+	//   - ctx: Context for cancellation and deadlines
+	//   - pattern: The key pattern (e.g., "order:*")
+	//
+	// Returns:
+	//   - error: Any error that occurred during deletion
+	DeletePattern(ctx context.Context, pattern string) error
+
+	// Exists checks if a key exists in the cache.
+	//
+	// Parameters:
+	//   - ctx: Context for cancellation and deadlines
+	//   - key: The cache key
+	//
+	// Returns:
+	//   - bool: true if key exists
+	//   - error: Any error that occurred during check
+	Exists(ctx context.Context, key string) (bool, error)
+
+	// SetNX sets a value only if the key doesn't exist (for distributed locks).
+	//
+	// Parameters:
+	//   - ctx: Context for cancellation and deadlines
+	//   - key: The cache key
+	//   - value: The value to cache
+	//   - ttlSeconds: Time-to-live in seconds
+	//
+	// Returns:
+	//   - bool: true if the key was set (didn't exist)
+	//   - error: Any error that occurred
+	SetNX(ctx context.Context, key string, value interface{}, ttlSeconds int) (bool, error)
+}
+
 // Logger defines the interface for structured logging.
-// Implementation may use zap, logrus, or the standard library.
+// Implementations may use Zap, Logrus, or the standard library.
 //
 // Example usage:
 //
@@ -37,15 +115,15 @@ type Logger interface {
 	// Error logs an error message with optional key-value pairs.
 	Error(msg string, keysAndValues ...interface{})
 
-	// With return a logger with additional context fields.
+	// With returns a logger with additional context fields.
 	With(keysAndValues ...interface{}) Logger
 
-	// WithContext return a logger with context information (e.g., request ID).
+	// WithContext returns a logger with context information (e.g., request ID).
 	WithContext(ctx context.Context) Logger
 }
 
-// Metrics defines the interface for recording application metrics.
-// Implementation may use Prometheus, StatsD, or CloudWatch.
+// Metrics defines the interface for metrics collection.
+// Implementations may use Prometheus, StatsD, or CloudWatch.
 type Metrics interface {
 	// Counter increments a counter metric.
 	Counter(name string, value float64, tags map[string]string)
@@ -61,17 +139,17 @@ type Metrics interface {
 }
 
 // Tracer defines the interface for distributed tracing.
-// Implementation may use OpenTelemetry, Jaeger, or Zipkin.
+// Implementations may use OpenTelemetry, Jaeger, or Zipkin.
 type Tracer interface {
 	// StartSpan starts a new span for tracing.
 	//
 	// Parameters:
-	//   - ctx: the context for parent span
-	//   - operationName: the name of the operation being traced
+	//   - ctx: Context for parent span
+	//   - operationName: Name of the operation
 	//
 	// Returns:
-	//   - context.Context: the new context containing the span
-	//   - Span: the created span (must be ended)
+	//   - context.Context: Context with the new span
+	//   - Span: The created span (must be ended)
 	StartSpan(ctx context.Context, operationName string) (context.Context, Span)
 }
 
@@ -83,7 +161,7 @@ type Span interface {
 	// SetAttribute sets an attribute on the span.
 	SetAttribute(key string, value interface{})
 
-	// SetError marks the span with an error.
+	// SetError marks the span as an error.
 	SetError(err error)
 
 	// AddEvent adds an event to the span.

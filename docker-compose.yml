@@ -1,0 +1,154 @@
+# =============================================================================
+# Docker Compose Configuration
+# =============================================================================
+# Defines all services required for the Order Processing System
+#
+# Services:
+#   - api-gateway: Main API entry point
+#   - postgres: PostgreSQL database
+#   - redis: Redis cache
+# Note: RabbitMQ is only used in microservices architecture
+#
+# Usage:
+#   docker-compose up -d              # Start all services
+#   docker-compose up -d postgres     # Start only PostgreSQL
+#   docker-compose logs -f api-gateway # View service logs
+#   docker-compose down -v            # Stop and remove volumes
+# =============================================================================
+
+version: '3.8'
+
+services:
+  # ===========================================================================
+  # API Gateway
+  # ===========================================================================
+  api-gateway:
+    build:
+      context: .
+      dockerfile: deployments/docker/Dockerfile.api-gateway
+      args:
+        VERSION: ${VERSION:-dev}
+    container_name: ops-api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      # Application
+      OPS_ENVIRONMENT: development
+      OPS_APP_NAME: order-processing-system
+      # Server
+      OPS_SERVER_HOST: 0.0.0.0
+      OPS_SERVER_PORT: 8080
+      # Database
+      OPS_DATABASE_HOST: postgres
+      OPS_DATABASE_PORT: 5432
+      OPS_DATABASE_USER: postgres
+      OPS_DATABASE_PASSWORD: postgres
+      OPS_DATABASE_NAME: orders
+      OPS_DATABASE_SSL_MODE: disable
+      # Redis
+      OPS_REDIS_HOST: redis
+      OPS_REDIS_PORT: 6379
+      # Logging
+      OPS_LOG_LEVEL: debug
+      OPS_LOG_FORMAT: console
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - ops-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ===========================================================================
+  # PostgreSQL Database
+  # ===========================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: ops-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: orders
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./migrations/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    restart: unless-stopped
+    networks:
+      - ops-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d orders"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ===========================================================================
+  # Redis Cache
+  # ===========================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: ops-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    networks:
+      - ops-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+
+  # ===========================================================================
+  # Adminer - Database Management UI (Development only)
+  # ===========================================================================
+  adminer:
+    image: adminer:latest
+    container_name: ops-adminer
+    ports:
+      - "8081:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    networks:
+      - ops-network
+    profiles:
+      - dev
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  ops-network:
+    driver: bridge
+    name: ops-network
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  postgres-data:
+    name: ops-postgres-data
+  redis-data:
+    name: ops-redis-data
+

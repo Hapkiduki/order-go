@@ -52,6 +52,22 @@ run-air: ## Run API Gateway with air (Hot Reload) - requires infrastructure runn
 
 run-api-gateway: run ## Alias for run
 
+# =============================================================================
+# Development
+# =============================================================================
+
+dev-infra: ## Start development infrastructure (PostgreSQL + Redis)
+	@echo "Starting development infrastructure..."
+	@docker-compose -f docker-compose.dev.yml up -d
+	@echo "Infrastructure started. Use 'make run-air' to start the app with hot reload"
+
+dev-infra-down: ## Stop development infrastructure
+	@docker-compose -f docker-compose.dev.yml down
+
+dev-infra-logs: ## View infrastructure logs
+	@docker-compose -f docker-compose.dev.yml logs -f
+
+
 # =================================================================
 # Docker
 # =================================================================

@@ -1,21 +1,21 @@
-# ========================================================================
-# Example Configuration File
-# ========================================================================
+# =============================================================================
+# Configuration Example
+# =============================================================================
 # This is an example configuration file. Copy to config.yaml for local use.
 # DO NOT commit config.yaml to version control if it contains secrets.
 #
 # Note: Environment variables take precedence over config file values.
 # Prefix environment variables with OPS_ (e.g., OPS_SERVER_PORT)
-# ========================================================================
+# =============================================================================
 
-# Application Settings
+# Application settings
 app:
   name: order-processing-system
-  environment: development # development | staging | production
+  environment: development  # development, staging, production
   version: "1.0.0"
-  debug: true                    
+  debug: true
 
-# HTTP Server Settings
+# HTTP Server settings
 server:
   host: "0.0.0.0"
   port: 8080
@@ -26,9 +26,55 @@ server:
   max_request_size: 10485760  # 10 MB
   cors_allowed_origins:
     - "*"
-  
-# Logging Settings
+
+# PostgreSQL Database settings
+database:
+  host: localhost
+  port: 5432
+  user: postgres
+  # password: Set via OPS_DATABASE_PASSWORD environment variable
+  database: orders
+  ssl_mode: disable
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: 5m
+  conn_max_idle_time: 5m
+
+# Redis Cache settings
+redis:
+  host: localhost
+  port: 6379
+  # password: Set via OPS_REDIS_PASSWORD environment variable
+  db: 0
+  pool_size: 10
+  key_prefix: "ops:"
+
+# RabbitMQ Message Queue settings
+rabbitmq:
+  host: localhost
+  port: 5672
+  user: guest
+  # password: Set via OPS_RABBITMQ_PASSWORD environment variable
+  vhost: /
+  exchange: order_events
+  exchange_type: topic
+
+# Logging settings
 log:
-  level: debug  # debug | info | warn | error
-  format: console  # json | console
-  output: stdout  # stdout | stderr | /path/to/logfile.log
+  level: debug  # debug, info, warn, error
+  format: console  # json, console
+  output: stdout
+
+# Metrics settings
+metrics:
+  enabled: true
+  port: 9090
+  path: /metrics
+
+# Distributed Tracing settings
+tracing:
+  enabled: false
+  service_name: order-processing-system
+  endpoint: http://localhost:14268/api/traces
+  sampling_rate: 0.1  # 10% sampling
+
